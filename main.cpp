@@ -21,6 +21,7 @@ struct Bullet {
   Vector2 dv{0, 0};
   int typ = 0;
   int lifetime = 0;
+  int damage = 0;
   int close_encounters[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
   bool alive = false;
 };
@@ -41,6 +42,12 @@ struct Experience {
 struct Item {
   Vector2 pos{0, 0};
   int typ = 0;
+  bool alive = false;
+};
+
+struct Boss {
+  Vector2 pos{0, 0};
+  int hp = 1000000;
   bool alive = false;
 };
 
@@ -81,6 +88,7 @@ int main(int argc, char *argv[]) {
   Experience experiences[ENOUGH];
   Item items[ENOUGH];
   Rocket rocket;
+  Boss boss;
   int rocket_exploded = 0;
   bool rocket_target_locked = false;
   int rocket_target_idx = 0;
@@ -133,6 +141,15 @@ int main(int argc, char *argv[]) {
 
   bool game_over = false;
   bool pause = true;
+
+  auto morda_r = LoadTexture("morda_r.png");
+  auto morda_l = LoadTexture("morda_l.png");
+  auto morda_o = LoadTexture("morda_o.png");
+  int player_dir = 0;
+  if (!IsTextureReady(morda_o) || !IsTextureReady(morda_l) ||
+      !IsTextureReady(morda_r)) {
+    player_dir = -1;
+  }
 
   while (!WindowShouldClose()) {
     auto w = GetScreenWidth();
@@ -198,6 +215,22 @@ int main(int argc, char *argv[]) {
                 bullet.dv.y = 0;
               }
             }
+            switch (bullet.typ) {
+            case 1:
+              bullet.damage = 10;
+              break;
+            case 2:
+              bullet.damage = 50;
+              break;
+            case 3:
+              bullet.damage = 20;
+              break;
+            case 4:
+              bullet.damage = 15;
+              break;
+            default:
+              break;
+            }
             bullet.alive = true;
             bullet.lifetime = bullet.typ == 3 ? 3 : 1;
             dead_bullet = find_dead(bullets, ENOUGH, dead_bullet);
@@ -211,6 +244,9 @@ int main(int argc, char *argv[]) {
           rocket.dv = Vector2{(float)GetRandomValue(-10, 10),
                               (float)GetRandomValue(-10, 10)};
           rocket.alive = true;
+          if (player_dir >= 0) {
+            player_dir = 30;
+          }
         }
       }
 
@@ -226,6 +262,11 @@ int main(int argc, char *argv[]) {
           item.alive = true;
           dead_item = find_dead(items, ENOUGH, dead_item);
         }
+      }
+
+      if (!boss.alive && frame_counter % (60 * 60 * 10) == 0) {
+        boss.alive = true;
+        boss.pos = Vector2{10000, 10000};
       }
 
       for (auto &e : enemies) {
@@ -248,7 +289,8 @@ int main(int argc, char *argv[]) {
       for (auto &e : experiences) {
         if (e.alive) {
           auto d = Vector2Distance(player, e.pos);
-          if (CheckCollisionCircles(player, 32 + player_level * 2, e.pos, 8)) {
+          if (CheckCollisionCircles(player, 32 + pow(1.3, player_level), e.pos,
+                                    8)) {
             player_experience += e.value;
             e.alive = false;
             if (player_experience >= pow(phi, player_level)) {
@@ -277,6 +319,22 @@ int main(int argc, char *argv[]) {
       }
 
       for (auto &b : bullets) {
+        if (b.alive && boss.alive) {
+          if (CheckCollisionPointCircle(b.pos, boss.pos, 64)) {
+            boss.hp -= b.damage;
+            b.lifetime -= 1;
+            if (b.lifetime <= 0) {
+              b.alive = false;
+            }
+            if (boss.hp <= 0) {
+              boss.alive = false;
+            } else {
+              boss.pos = Vector2Add(
+                  boss.pos,
+                  Vector2Scale(Vector2Subtract(player, boss.pos), -0.001));
+            }
+          }
+        }
         if (b.alive) {
           bool found_close = false;
           auto min_d = std::numeric_limits<float>::max();
@@ -290,22 +348,13 @@ int main(int argc, char *argv[]) {
                 if (b.lifetime <= 0) {
                   b.alive = false;
                 }
-                switch (b.typ) {
-                case 1:
-                  enemies[e].hp -= 10;
-                  break;
-                case 2:
-                  enemies[e].hp -= 50;
-                  break;
-                case 3:
-                  enemies[e].hp -= 20;
-                  break;
-                default:
-                  break;
-                }
+                enemies[e].hp -= b.damage;
                 if (enemies[e].hp <= 0) {
                   enemies[e].alive = false;
                   drop_xp(enemies[e]);
+                } else {
+                  enemies[e].pos =
+                      Vector2Add(enemies[e].pos, Vector2Scale(b.dv, -1.0));
                 }
                 break;
               }
@@ -325,25 +374,12 @@ int main(int argc, char *argv[]) {
                   if (b.lifetime <= 0) {
                     b.alive = false;
                   }
-                  switch (b.typ) {
-                  case 1:
-                    e.hp -= 10;
-                    break;
-                  case 2:
-                    e.hp -= 50;
-                    break;
-                  case 3:
-                    e.hp -= 20;
-                    break;
-                  case 4:
-                    e.hp -= 15;
-                    break;
-                  default:
-                    break;
-                  }
+                  e.hp -= b.damage;
                   if (e.hp <= 0) {
                     e.alive = false;
                     drop_xp(e);
+                  } else {
+                    e.pos = Vector2Add(e.pos, Vector2Scale(b.dv, -1.0));
                   }
                   break;
                 } else if (b.typ == 2 || b.typ == 3) {
@@ -387,7 +423,7 @@ int main(int argc, char *argv[]) {
               b.dv = Vector2Scale(Vector2Add(b.dv, Vector2{dx, dy}), 0.5);
             }
             b.pos = Vector2Add(b.pos, b.dv);
-            if (b.typ == 1 && Vector2Distance(player, b.pos) > 1000) {
+            if (Vector2Distance(player, b.pos) > 1000) {
               b.alive = false;
             }
           }
@@ -395,6 +431,14 @@ int main(int argc, char *argv[]) {
       }
 
       if (rocket.alive) {
+        if (boss.alive) {
+          if (CheckCollisionPointCircle(rocket.pos, boss.pos, 64)) {
+            boss.hp -= 1000;
+            if (boss.hp <= 0) {
+              boss.alive = false;
+            }
+          }
+        }
         if (rocket_target_locked && enemies[rocket_target_idx].alive) {
           if (CheckCollisionPointCircle(rocket.pos,
                                         enemies[rocket_target_idx].pos, 16)) {
@@ -463,10 +507,24 @@ int main(int argc, char *argv[]) {
         }
       }
 
+      if (boss.alive) {
+        auto d = Vector2Distance(player, boss.pos);
+        if (d < 64) {
+          game_over = true;
+        } else {
+          auto dx = (player.x - boss.pos.x) / d;
+          auto dy = (player.y - boss.pos.y) / d;
+          boss.pos.x += ((player_level + 1) / 3) * dx;
+          boss.pos.y += ((player_level + 1) / 3) * dy;
+        }
+      }
+
       if (IsKeyDown(KEY_LEFT)) {
+        player_dir = 0;
         player.x -= player_speed;
       }
       if (IsKeyDown(KEY_RIGHT)) {
+        player_dir = 1;
         player.x += player_speed;
       }
       if (IsKeyDown(KEY_UP)) {
@@ -522,6 +580,10 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < RECT_NUMBER; ++i) {
       DrawRectangleRec(rectangles[i], rect_colors[i]);
     }
+    DrawLineEx({-10000, -10000}, {-10000, 10000}, 5, YELLOW);
+    DrawLineEx({10000, -10000}, {10000, 10000}, 5, YELLOW);
+    DrawLineEx({-10000, -10000}, {10000, -10000}, 5, YELLOW);
+    DrawLineEx({10000, 10000}, {-10000, 10000}, 5, YELLOW);
     for (int i = 0; i < ENOUGH; ++i) {
       if (experiences[i].alive) {
         DrawPoly(experiences[i].pos, 6, 8, 0,
@@ -530,7 +592,7 @@ int main(int argc, char *argv[]) {
     }
     for (int i = 0; i < ENOUGH; ++i) {
       if (items[i].alive) {
-        DrawPoly(items[i].pos, 4, 16, 0, items[i].typ ? YELLOW : GOLD);
+        DrawPoly(items[i].pos, 4, 16, 0, items[i].typ ? GOLD : GOLD);
       }
     }
     for (int i = 0; i < ENOUGH; ++i) {
@@ -557,8 +619,23 @@ int main(int argc, char *argv[]) {
       DrawCircleV(rocket.pos, 500, WHITE);
       rocket_exploded -= 1;
     }
-    DrawCircle(player.x, player.y, 32, BLUE);
-    int wg = player_hp / 1000.0 * 64;
+    if (boss.alive) {
+      DrawCircleV(boss.pos, 64, MAROON);
+      int wg = boss.hp / 1000000.0 * 128;
+      int wr = 128 - wg;
+      DrawRectangle(boss.pos.x - 64, boss.pos.y - 70, wg, 5, GREEN);
+      DrawRectangle(boss.pos.x - 64 + wg, boss.pos.y - 70, wr, 5, RED);
+    }
+    if (player_dir >= 0) {
+      DrawTexture(player_dir > 1 ? morda_o : (player_dir ? morda_r : morda_l),
+                  player.x - 32, player.y - 32, WHITE);
+      if (player_dir > 1) {
+        player_dir -= 1;
+      }
+    } else {
+      DrawCircle(player.x, player.y, 32, BLUE);
+    }
+    int wg = player_hp / (1000.0 + 100 * player_level) * 64;
     int wr = 64 - wg;
     DrawRectangle(player.x - 32, player.y - 40, wg, 5, GREEN);
     DrawRectangle(player.x - 32 + wg, player.y - 40, wr, 5, RED);
@@ -579,17 +656,17 @@ int main(int argc, char *argv[]) {
     DrawRectangle(wc, 0, win_w - wc, 10, BLUE);
     if (game_over) {
       DrawText("GAME OVER", (w - MeasureText("GAME OVER", 72)) / 2,
-               GetScreenHeight() / 2 - 36, 72, RAYWHITE);
+               GetScreenHeight() / 2 - 36, 72, BLACK);
     }
     if (pause) {
       DrawText("PAUSE", (w - MeasureText("PAUSE", 72)) / 2,
-               GetScreenHeight() / 2 - 36, 72, RAYWHITE);
+               GetScreenHeight() / 2 - 36, 72, BLACK);
     }
     EndDrawing();
 
     if (!game_over && !pause) {
       frame_counter += 1;
-      player_hp = std::min(player_hp + 1, 1000);
+      player_hp = std::min(player_hp + 1ul, 1000 + 100 * player_level);
     }
   }
 
