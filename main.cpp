@@ -539,6 +539,12 @@ int main(int argc, char *argv[]) {
       if (IsKeyDown(KEY_DOWN)) {
         player.y += player_speed;
       }
+      auto move = GetMouseWheelMove();
+      camera.zoom += 0.05 * move;
+      camera.zoom = std::max(0.0f, camera.zoom);
+      if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+        camera.zoom = 1.0f;
+      }
 
       if (player.x < -10000) {
         player.x += 20000;
