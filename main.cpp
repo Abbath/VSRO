@@ -145,7 +145,10 @@ int main(int argc, char *argv[]) {
   auto morda_r = LoadTexture("morda_r.png");
   auto morda_l = LoadTexture("morda_l.png");
   auto morda_o = LoadTexture("morda_o.png");
+  auto boss_texture = LoadTexture("boss.png");
+  auto enemy_texture = LoadTexture("enemy.png");
   int player_dir = 0;
+  int player_launches = 0;
   if (!IsTextureReady(morda_o) || !IsTextureReady(morda_l) ||
       !IsTextureReady(morda_r)) {
     player_dir = -1;
@@ -245,7 +248,7 @@ int main(int argc, char *argv[]) {
                               (float)GetRandomValue(-10, 10)};
           rocket.alive = true;
           if (player_dir >= 0) {
-            player_dir = 30;
+            player_launches = 30;
           }
         }
       }
@@ -264,8 +267,9 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      if (!boss.alive && frame_counter % (60 * 60 * 10) == 0) {
+      if (!boss.alive && (frame_counter % (60 * 60 * 10) == 0)) {
         boss.alive = true;
+        boss.hp = 1000000;
         boss.pos = Vector2{10000, 10000};
       }
 
@@ -279,8 +283,10 @@ int main(int argc, char *argv[]) {
               game_over = true;
             }
           }
-          auto dx = std::max(1ul, player_level / 3) * (player.x - e.pos.x) / d;
-          auto dy = std::max(1ul, player_level / 3) * (player.y - e.pos.y) / d;
+          auto dx =
+              std::max(1.0, player_level / 3.0) * (player.x - e.pos.x) / d;
+          auto dy =
+              std::max(1.0, player_level / 3.0) * (player.y - e.pos.y) / d;
           e.pos.x += dx;
           e.pos.y += dy;
         }
@@ -597,7 +603,11 @@ int main(int argc, char *argv[]) {
     }
     for (int i = 0; i < ENOUGH; ++i) {
       if (enemies[i].alive) {
-        DrawCircleV(enemies[i].pos, 16, RED);
+        if (!IsTextureReady(enemy_texture)) {
+          DrawCircleV(enemies[i].pos, 16, RED);
+        } else {
+          DrawTextureV(enemy_texture, enemies[i].pos, WHITE);
+        }
       }
     }
     for (int i = 0; i < ENOUGH; ++i) {
@@ -620,17 +630,21 @@ int main(int argc, char *argv[]) {
       rocket_exploded -= 1;
     }
     if (boss.alive) {
-      DrawCircleV(boss.pos, 64, MAROON);
+      if (IsTextureReady(boss_texture)) {
+        DrawTextureV(boss_texture, Vector2Subtract(boss.pos, {64, 64}), WHITE);
+      } else {
+        DrawCircleV(boss.pos, 64, MAROON);
+      }
       int wg = boss.hp / 1000000.0 * 128;
       int wr = 128 - wg;
       DrawRectangle(boss.pos.x - 64, boss.pos.y - 70, wg, 5, GREEN);
       DrawRectangle(boss.pos.x - 64 + wg, boss.pos.y - 70, wr, 5, RED);
     }
     if (player_dir >= 0) {
-      DrawTexture(player_dir > 1 ? morda_o : (player_dir ? morda_r : morda_l),
+      DrawTexture(player_launches > 1 ? morda_o : (player_dir ? morda_r : morda_l),
                   player.x - 32, player.y - 32, WHITE);
-      if (player_dir > 1) {
-        player_dir -= 1;
+      if (player_launches > 0) {
+        player_launches -= 1;
       }
     } else {
       DrawCircle(player.x, player.y, 32, BLUE);
@@ -666,7 +680,7 @@ int main(int argc, char *argv[]) {
 
     if (!game_over && !pause) {
       frame_counter += 1;
-      player_hp = std::min(player_hp + 1ul, 1000 + 100 * player_level);
+      player_hp = std::min(uint64_t(player_hp + 1), 1000 + 100 * player_level);
     }
   }
 
